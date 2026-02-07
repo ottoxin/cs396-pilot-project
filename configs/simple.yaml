@@ -1,0 +1,43 @@
+run_name: simple
+base_model: Qwen/Qwen3-4B-Instruct-2507
+seed: 42
+train_data:
+  source: hf
+  path: gsm8k
+  split: train
+method: qlora
+train_hparams:
+  num_epochs: 1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+  weight_decay: 0.0
+  warmup_ratio: 0.0
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+max_seq_length: 2048
+fewshot_k: 3
+max_new_tokens_gsm8k: 512
+max_new_tokens_ailuminate: 512
+quantization:
+  use_bnb: true
+  double_quant: true
+  nf4: true
+  compute_dtype: bfloat16
+checkpointing:
+  save_steps: 500
+  eval_steps: 500
+  checkpoint_sweep: false
+smoke_test:
+  enabled: false
+  train_samples: 200
+  gsm8k_eval_samples: 50
+  ailuminate_eval_samples: 50
+data_paths:
+  fewshot_file: data/fewshot_gsm8k_fixed.jsonl
+  refined_gsm8k: data/gsm8k_train_self-instruct.jsonl
+  ailuminate: data/ailuminate.jsonl
+  safety_prompt: data/safety_prompt.txt
+  safeguard_model: data/safeguard_model
+output_dir: results
