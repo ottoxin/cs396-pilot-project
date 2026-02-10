@@ -1,0 +1,43 @@
+run_name: sandbox_one
+base_model: Qwen/Qwen2.5-0.5B-Instruct
+seed: 42
+train_data:
+  source: hf
+  path: gsm8k
+  split: train
+method: qlora
+train_hparams:
+  num_epochs: 1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-4
+  weight_decay: 0.0
+  warmup_ratio: 0.0
+  lora_r: 4
+  lora_alpha: 8
+  lora_dropout: 0.0
+max_seq_length: 256
+fewshot_k: 1
+max_new_tokens_gsm8k: 16
+max_new_tokens_ailuminate: 16
+quantization:
+  use_bnb: false
+  double_quant: false
+  nf4: false
+  compute_dtype: fp32
+checkpointing:
+  save_steps: 20
+  eval_steps: 20
+  checkpoint_sweep: false
+smoke_test:
+  enabled: true
+  train_samples: 2
+  gsm8k_eval_samples: 1
+  ailuminate_eval_samples: 1
+data_paths:
+  fewshot_file: data/fewshot_sandbox_one.jsonl
+  refined_gsm8k: data/gsm8k_train_self-instruct.jsonl
+  ailuminate: data/ailuminate.jsonl
+  safety_prompt: data/safety_prompt.txt
+  safeguard_model: Qwen/Qwen3-4B-SafeRL
+output_dir: results

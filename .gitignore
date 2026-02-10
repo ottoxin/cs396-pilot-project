@@ -1,2 +1,10 @@
 .DS_Store
 .Rhistory
+data/ailuminate_test.csv
+data/ailuminate.jsonl
+data/fewshot_*.jsonl
+data/safeguard_model/
+results/
+.venv/
+__pycache__/
+*.pyc

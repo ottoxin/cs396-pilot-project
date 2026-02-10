@@ -1,144 +1,129 @@
-# CS396 Pilot Project — QLoRA GSM8K + AILuminate Pipeline
+# CS396 Pilot Project - QLoRA GSM8K + AILuminate Pipeline
 
-End-to-end fine-tuning and evaluation of **Qwen/Qwen3-4B-Instruct-2507** on GSM8K with LoRA/QLoRA, plus AILuminate safety evaluation using the provided safeguard model and Safety Guidelines prompt.
+End-to-end fine-tuning and evaluation for GSM8K plus AILuminate safety scoring.
 
-## Overview (what this project does)
-- **Train**: Fine-tune the Qwen 3-4B Instruct base model on GSM8K math word problems using QLoRA (4-bit) with assistant-only loss masking and a fixed few-shot pool to avoid leakage.
-- **Evaluate accuracy**: Run greedy GSM8K inference with the fixed few-shot examples prepended; parse final numeric answers (after `####`) and compute accuracy.
-- **Evaluate safety**: Generate responses on the AILuminate prompt set, then score them with the provided safeguard classifier and Safety Guidelines prompt to obtain a safety rate (safe/total).
-- **Compare runs**: Provide three presets (Simple, Medium, Strong) and optional checkpoint sweeps; write metrics and artifacts to `results/`, and report whether each run beats its baseline thresholds.
+## Overview
+- Train a Qwen Instruct model with QLoRA on GSM8K.
+- Evaluate GSM8K accuracy with fixed few-shot prompts.
+- Evaluate AILuminate safety rate using `Qwen/Qwen3-4B-SafeRL` prompted with Safety Guidelines.
+- Compare runs (`simple`, `medium`, `strong`) against baseline thresholds.
 
-## Repo layout (detailed)
+## Repo Layout
 - `configs/`
-  - `simple.yaml` — 1-epoch QLoRA baseline, few-shot k=3, max_new_tokens 512.
-  - `medium.yaml` — 1-epoch, k=5, checkpoint sweep enabled.
-  - `strong.yaml` — 2-epoch, k=8, uses refined GSM8K file if present.
-- `data/`
-  - `fewshot_gsm8k_fixed.jsonl` — auto-created pool of 8 fixed few-shot examples (seed=42).
-  - `gsm8k_train_self-instruct.jsonl` — refined GSM8K training file (required for strong run).
-  - `ailuminate.jsonl` — AILuminate prompts (required).
-  - `safety_prompt.txt` — provided Safety Guidelines prompt (required).
-  - `safeguard_model/` — provided classifier model directory (required).
-- `results/`
-  - `run_<run>/config_resolved.json` — resolved config per run.
-  - `gsm8k_preds_<run>.jsonl`, `ailuminate_preds_<run>.jsonl`, `ailuminate_safety_<run>.jsonl`.
-  - `summary.csv` — aggregated metrics; `checkpoint_scores_<run>.csv` for sweeps.
-- `scripts/`
-  - `run_experiment.py` — orchestrates train → eval → safety → summary.
+  - `simple.yaml`, `medium.yaml`, `strong.yaml`
 - `src/`
-  - `config.py` — dataclasses + loader for configs.
-  - `data/gsm8k.py` — loading, few-shot creation/removal, tokenization with assistant-only labels, answer parsing.
-  - `modeling/load_model.py` — tokenizer/model loader, QLoRA + LoRA target discovery, inference loader.
-  - `training/train_qlora.py` — Trainer wrapper saving adapters/checkpoints.
-  - `eval/gsm8k_eval.py` — greedy GSM8K inference, parsing, accuracy.
-  - `eval/ailuminate_eval.py` — AILuminate generation.
-  - `eval/safety_eval.py` — runs provided safeguard classifier with fixed prompt.
-  - `utils/io.py` — seeding and IO helpers.
+  - `cli/run_experiment.py` - main train/eval entrypoint
+  - `cli/prepare_ailuminate_data.py` - CSV download + CSV->JSONL converter
+  - `data/gsm8k.py` - dataset loading, few-shot handling, tokenization, parsing
+  - `training/train_qlora.py` - Trainer wrapper
+  - `eval/gsm8k_eval.py` - GSM8K generation + scoring
+  - `eval/ailuminate_eval.py` - AILuminate generation
+  - `eval/safety_eval.py` - safeguard safety judging (`Qwen/Qwen3-4B-SafeRL` by default)
 - `tests/`
-  - `test_parsing.py` — #### parser.
-  - `test_fewshot.py` — determinism/removal.
-  - `test_label_mask.py` — assistant-only label masking sanity.
+  - unit tests for parsing, few-shot behavior, label masking, AILuminate prompt extraction
+- `data/`
+  - runtime data artifacts (not fully tracked in git)
 
-## Prerequisites
-- Python 3.10+ recommended.
-- CUDA GPU for full runs (bitsandbytes 4-bit). MPS/CPU can run smoke tests but will be slow and may require smaller configs.
+## Preset Comparison
+| Setting | Simple | Medium | Strong |
+| --- | --- | --- | --- |
+| Base model | `Qwen/Qwen2.5-1.5B-Instruct` | `Qwen/Qwen2.5-1.5B-Instruct` | `Qwen/Qwen2.5-1.5B-Instruct` |
+| Train data source | HF `gsm8k` train | HF `gsm8k` train | `data/gsm8k_train_self-instruct.jsonl` |
+| Epochs | `1` | `1` | `2` |
+| LR | `1.0e-4` | `5.0e-5` | `2.0e-5` |
+| LoRA `r/alpha/dropout` | `8 / 16 / 0.0` | `16 / 32 / 0.05` | `32 / 64 / 0.1` |
+| Few-shot `k` | `3` | `5` | `8` |
+| GSM8K max new tokens | `512` | `768` | `1024` |
+| AILuminate max new tokens | `512` | `512` | `512` |
+| Checkpoint sweep | `false` | `true` (max `3`) | `false` |
 
-Install dependencies:
+## Setup
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Data & model expectations
-Place required files under `data/`:
-- **GSM8K**: HF dataset will be downloaded automatically when `train_data.source: hf`. For the strong run, place refined file at `data/gsm8k_train_self-instruct.jsonl`.
-- **AILuminate prompts**: `data/ailuminate.jsonl` (fields: `prompt` or `input`).
-- **Safety prompt**: `data/safety_prompt.txt` (exact Safety Guidelines text provided by the assignment).
-- **Safeguard classifier model**: HF-format directory at `data/safeguard_model` (do not modify its weights or prompt logic).
+Notes:
+- `bitsandbytes` is restricted in `requirements.txt` to Linux x86_64.
+- On non-CUDA or unsupported platforms, training/inference runs without bitsandbytes quantization acceleration.
+- Safeguard eval with `Qwen/Qwen3-4B-SafeRL` adds a separate 4B model load during safety scoring.
 
-Few-shot set:
-- A fixed pool of 8 GSM8K examples is created (seed=42) on first run and saved to `data/fewshot_gsm8k_fixed.jsonl`.
-- Runs use the first k examples: simple=3, medium=5, strong=8; these examples are removed from training to avoid leakage.
+## Data Setup
+Required for full run:
+- `data/ailuminate.jsonl` (generate with command below)
+- `data/safety_prompt.txt`
+- internet access on first run to download safeguard model weights
 
-## Running experiments
-Main CLI:
+Prepare AILuminate JSONL from class CSV:
 ```bash
-python3 scripts/run_experiment.py --config configs/<name>.yaml [--smoke-test]
-```
-- `--smoke-test` overrides sample sizes (train 200 / GSM8K eval 50 / AILuminate 50) for quick validation.
-
-Recommended order:
-1) Smoke-test simple
-```bash
-python3 scripts/run_experiment.py --config configs/simple.yaml --smoke-test
-```
-2) Full strong run
-```bash
-python3 scripts/run_experiment.py --config configs/strong.yaml
-```
-3) Optional medium with checkpoint sweep
-```bash
-python3 scripts/run_experiment.py --config configs/medium.yaml
+python -m src.cli.prepare_ailuminate_data
 ```
 
-## Experiment plan / logic
-1) **Data prep**  
-   - Load GSM8K train (or refined file for strong) and test.  
-   - Create/load fixed 8-example few-shot pool (seed=42) at `data/fewshot_gsm8k_fixed.jsonl`; remove these from train; use first k per config.  
-   - Tokenize with chat template; mask system/user tokens (labels = -100) so loss is only on assistant turns.
-2) **Model setup**  
-   - Base: `Qwen/Qwen3-4B-Instruct-2507`.  
-   - QLoRA defaults: 4-bit nf4, double quant, bfloat16 compute when available, gradient checkpointing, device_map=auto.  
-   - LoRA target modules auto-detected among q/k/v/o/gate/up/down projections.
-3) **Training**  
-   - Hyperparams per config (see config files).  
-   - Trainer saves adapters/checkpoints to `results/run_<run>/checkpoints`.  
-   - Medium optionally sweeps latest checkpoints (configurable count) and keeps best by accuracy then safety.
-4) **Inference & metrics**  
-   - GSM8K: prepend fixed few-shot exemplars, greedy decoding, parse final `####` number; log per-item JSONL; compute accuracy.  
-   - AILuminate: greedy decoding, log per-item JSONL.
-5) **Safety eval**  
-   - Prepend Safety Guidelines prompt from `data/safety_prompt.txt`; run provided safeguard classifier in `data/safeguard_model`; produce labels/scores JSONL and safety rate.
-6) **Summaries**  
-   - `results/summary.csv` records run_name, model, data, method, hyperparams, GSM8K accuracy, AILuminate safety, chosen checkpoint.  
-   - Baseline check printed per run: Simple (0.26/0.26), Medium (0.31/0.34), Strong (0.37/0.42).
+`prepare_ailuminate_data` defaults:
+- download: `https://www.csie.ntu.edu.tw/~b10902031/ailuminate_test.csv`
+- output CSV: `data/ailuminate_test.csv`
+- output JSONL: `data/ailuminate.jsonl`
+
+Safeguard model default in configs:
+- `data_paths.safeguard_model: Qwen/Qwen3-4B-SafeRL`
+- HF cache location follows standard Hugging Face behavior (`HF_HOME` if set).
+- HF login is usually not required for this public model; if you hit rate limits, set `HF_TOKEN`.
+
+## Run Experiments
+Main command:
+```bash
+python -m src.cli.run_experiment --config configs/<name>.yaml [--smoke-test] [--checkpoint <path>] [--skip-ailuminate]
+```
+
+Flags:
+- `--smoke-test`: small sample override for quick validation
+- `--checkpoint`: skip training and evaluate existing adapter/checkpoint
+- `--skip-ailuminate`: skip AILuminate generation and safety scoring
+
+Examples:
+```bash
+# 1) Prepare AILuminate data
+python -m src.cli.prepare_ailuminate_data
+
+# 2) Smoke test
+python -m src.cli.run_experiment --config configs/simple.yaml --smoke-test
+
+# 3) Full simple run
+python -m src.cli.run_experiment --config configs/simple.yaml
+
+# 4) Full medium run
+python -m src.cli.run_experiment --config configs/medium.yaml
+
+# 5) Full strong run
+python -m src.cli.run_experiment --config configs/strong.yaml
+```
+
+## Safety Evaluation Behavior
+- `src/eval/safety_eval.py` loads a causal safeguard model and asks it for `SAFE`/`UNSAFE`.
+- If `data_paths.safeguard_model` is an HF repo id (default), Transformers auto-downloads it on first use.
+- If required AILuminate safety assets are missing, `run_experiment` auto-skips AILuminate+safety and records safety as `0.0`.
+- You can still point `data_paths.safeguard_model` to a local model directory if needed.
 
 ## Outputs
-For each run `<run_name>`:
-- `results/run_<run_name>/config_resolved.json` — exact hyperparameters used.
-- `results/gsm8k_preds_<run_name>.jsonl` — per-question outputs with parsed answers and correctness.
-- `results/ailuminate_preds_<run_name>.jsonl` — model responses to AILuminate prompts.
-- `results/ailuminate_safety_<run_name>.jsonl` — safeguard labels and scores.
-- `results/summary.csv` — aggregate metrics: GSM8K accuracy, AILuminate safety rate, checkpoint path.
-- `results/checkpoint_scores_<run_name>.csv` — only for runs with checkpoint sweep (medium).
+- `results/run_<run_name>/config_resolved.json`
+- `results/gsm8k_preds_<run_name>.jsonl`
+- `results/ailuminate_preds_<run_name>.jsonl` (if not skipped)
+- `results/ailuminate_safety_<run_name>.jsonl` (if not skipped)
+- `results/summary.csv`
+- `results/checkpoint_scores_<run_name>.csv` (for sweep runs)
 
-Baseline thresholds (for pass/fail printed by the runner):
-- Simple: accuracy ≥ 0.26 AND safety ≥ 0.26
-- Medium: accuracy ≥ 0.31 AND safety ≥ 0.34
-- Strong: accuracy ≥ 0.37 AND safety ≥ 0.42
-
-## Safety evaluation
-`src/eval/safety_eval.py` loads the safeguard classifier from `data/safeguard_model` and prepends the exact Safety Guidelines prompt from `data/safety_prompt.txt` to each response. No changes are made to the safeguard logic; only model outputs are scored. Missing files raise a clear error.
-
-## Implementation details
-- QLoRA default: 4-bit nf4, double quant, bfloat16 compute (if supported), device_map="auto", gradient checkpointing on.
-- LoRA targets auto-detected for q/k/v/o/gate/up/down projections.
-- Training uses assistant-only labels built via `tokenizer.apply_chat_template`; system/user tokens are masked to -100.
-- Inference is greedy (do_sample=False); max_new_tokens is configurable (512–1024 in configs).
-- GSM8K answer parsing: last `####` block, digits/sign/decimal extracted; commas stripped.
+Baselines:
+- `simple`: accuracy >= 0.26 and safety >= 0.26
+- `medium`: accuracy >= 0.31 and safety >= 0.34
+- `strong`: accuracy >= 0.37 and safety >= 0.42
 
 ## Tests
-Run quick unit tests:
 ```bash
 pytest -q
 ```
 
 ## Troubleshooting
-- **OOM on GPU/MPS**: enable `--smoke-test`, lower `max_new_tokens_*`, or reduce batch/grad accumulation in the config.
-- **bitsandbytes on non-CUDA**: code auto-falls back to full precision when CUDA is unavailable; expect slower runs.
-- **Missing safeguard or prompt files**: ensure `data/safeguard_model` and `data/safety_prompt.txt` exist; the runner will fail fast if not.
-
-## Notes
-- Internet is required to download the base model and HF datasets unless you pre-stage them locally.
-- Do not edit the safeguard model or Safety Guidelines prompt; only the model outputs are evaluated.
+- If imports fail for `src`, run commands from repo root.
+- If safety files are missing, either provide them under `data/` or use `--skip-ailuminate`.
+- If memory is tight, use `--smoke-test` and/or reduce generation lengths in config.

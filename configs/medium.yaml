@@ -40,5 +40,5 @@ data_paths:
   refined_gsm8k: data/gsm8k_train_self-instruct.jsonl
   ailuminate: data/ailuminate.jsonl
   safety_prompt: data/safety_prompt.txt
-  safeguard_model: data/safeguard_model
+  safeguard_model: Qwen/Qwen3-4B-SafeRL
 output_dir: results

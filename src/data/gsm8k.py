@@ -11,6 +11,17 @@ SYSTEM_PROMPT = "You are a helpful assistant. Solve the math problem step by ste
 MAX_FEWSHOT = 8
 
 
+def _render_messages_plain(messages: List[Dict], add_generation_prompt: bool) -> str:
+    parts = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        parts.append(f"{role}: {content}")
+    if add_generation_prompt:
+        parts.append("assistant:")
+    return "\n".join(parts)
+
+
 def load_gsm8k(train_cfg, smoke_cfg) -> Tuple[Dataset, Dataset]:
     """Load GSM8K train (per config) and test splits."""
     if train_cfg.source == "hf":
@@ -61,13 +72,20 @@ def prepare_fewshot(train_ds: Dataset, k: int, fewshot_path: str, seed: int) -> 
 
 
 def _build_label_mask(tokenizer, messages, max_length: int):
-    # prompt without assistant content
-    prompt_ids = tokenizer.apply_chat_template(
-        messages[:-1], add_generation_prompt=True, tokenize=True, return_tensors="pt"
-    )[0]
-    full_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=False, tokenize=True, return_tensors="pt"
-    )[0]
+    if getattr(tokenizer, "chat_template", None):
+        # prompt without assistant content
+        prompt_ids = tokenizer.apply_chat_template(
+            messages[:-1], add_generation_prompt=True, tokenize=True, return_tensors="pt"
+        )[0]
+        full_ids = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=False, tokenize=True, return_tensors="pt"
+        )[0]
+    else:
+        # Fallback for tokenizers without chat templates (e.g., tiny GPT2 in tests).
+        prompt_text = _render_messages_plain(messages[:-1], add_generation_prompt=True)
+        full_text = _render_messages_plain(messages, add_generation_prompt=False)
+        prompt_ids = tokenizer(prompt_text, return_tensors="pt")["input_ids"][0]
+        full_ids = tokenizer(full_text, return_tensors="pt")["input_ids"][0]
 
     if full_ids.shape[0] > max_length:
         full_ids = full_ids[-max_length:]
