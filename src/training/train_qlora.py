@@ -1,10 +1,9 @@
 import os
 from typing import Tuple
 
-from transformers import Trainer, TrainingArguments, default_data_collator
+from transformers import Trainer, TrainingArguments, default_data_collator, DataCollatorForSeq2Seq
 
 from src.utils.io import ensure_dir
-
 
 def train_model(cfg, model, tokenizer, train_dataset, run_dir: str) -> str:
     checkpoint_dir = os.path.join(run_dir, "checkpoints")
@@ -21,7 +20,7 @@ def train_model(cfg, model, tokenizer, train_dataset, run_dir: str) -> str:
         logging_steps=50,
         save_steps=cfg.checkpointing.save_steps,
         save_total_limit=cfg.checkpointing.sweep_max_checkpoints,
-        evaluation_strategy="no",
+        eval_strategy="no", 
         save_strategy="steps",
         lr_scheduler_type="cosine",
         bf16=cfg.quantization.compute_dtype == "bfloat16",
@@ -36,7 +35,7 @@ def train_model(cfg, model, tokenizer, train_dataset, run_dir: str) -> str:
         args=training_args,
         train_dataset=train_dataset,
         tokenizer=tokenizer,
-        data_collator=default_data_collator,
+        data_collator=DataCollatorForSeq2Seq(tokenizer, padding=True),
     )
 
     trainer.train()
