@@ -81,8 +81,21 @@ def main():
     cfg.save_resolved(os.path.join(run_dir, "config_resolved.json"))
 
     # Prepare eval datasets (respect smoke-test sizes)
+   # Prepare eval datasets
     if cfg.smoke_test.enabled:
         test_ds = maybe_subset(test_ds, cfg.smoke_test.gsm8k_eval_samples)
+    else:
+        # --- NEW: 20% RANDOM SUBSET ---
+        # 1. Shuffle with the seed (guarantees same questions every time)
+        # 2. Select the first 20%
+        subset_ratio = 0.2
+        target_len = int(len(test_ds) * subset_ratio)
+        
+        print(f"📉 Downsampling GSM8K: {len(test_ds)} -> {target_len} examples")
+        test_ds = test_ds.shuffle(seed=cfg.seed).select(range(target_len))
+        # -----------------------------
+
+        
     ailuminate_ds = load_dataset("json", data_files=cfg.data_paths.ailuminate)["train"]
     if cfg.smoke_test.enabled:
         ailuminate_ds = maybe_subset(ailuminate_ds, cfg.smoke_test.ailuminate_eval_samples)
