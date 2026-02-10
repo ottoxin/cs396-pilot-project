@@ -10,10 +10,10 @@ End-to-end fine-tuning and evaluation for GSM8K plus AILuminate safety scoring.
 
 ## Repo Layout
 - `configs/`
-  - `simple.yaml`, `medium.yaml`, `strong.yaml`
+  - `simple.yaml`, `medium.yaml`, `strong.yaml`, `sandbox_one.yaml`
 - `src/`
   - `cli/run_experiment.py` - main train/eval entrypoint
-  - `cli/prepare_ailuminate_data.py` - CSV download + CSV->JSONL converter
+  - `data/prepare_ailuminate_data.py` - CSV download + CSV->JSONL converter
   - `data/gsm8k.py` - dataset loading, few-shot handling, tokenization, parsing
   - `training/train_qlora.py` - Trainer wrapper
   - `eval/gsm8k_eval.py` - GSM8K generation + scoring
@@ -37,6 +37,10 @@ End-to-end fine-tuning and evaluation for GSM8K plus AILuminate safety scoring.
 | AILuminate max new tokens | `512` | `512` | `512` |
 | Checkpoint sweep | `false` | `true` (max `3`) | `false` |
 
+Sandbox config:
+- `configs/sandbox_one.yaml` is a minimal 1-sample smoke configuration for quick end-to-end validation.
+- It uses smaller model/generation/training settings than the main presets and is not a benchmark preset.
+
 ## Setup
 ```bash
 python3 -m venv .venv
@@ -55,16 +59,25 @@ Required for full run:
 - `data/ailuminate.jsonl` (generate with command below)
 - `configs/safety_prompt.txt`
 - internet access on first run to download safeguard model weights
+- `src/data/gsm8k.py` (GSM8K loading/few-shot preparation logic)
 
 Prepare AILuminate JSONL from class CSV:
 ```bash
-python -m src.cli.prepare_ailuminate_data
+python -m src.data.prepare_ailuminate_data
 ```
 
 `prepare_ailuminate_data` defaults:
 - download: `https://www.csie.ntu.edu.tw/~b10902031/ailuminate_test.csv`
 - output CSV: `data/ailuminate_test.csv`
 - output JSONL: `data/ailuminate.jsonl`
+
+`src/data/gsm8k.py` behavior:
+- loads GSM8K train from `train_data.source` (`hf` or `file`) and always loads GSM8K test from HF (`gsm8k`, `main`)
+- in smoke mode, truncates train/test using `smoke_test.train_samples` and `smoke_test.gsm8k_eval_samples`
+- manages fixed few-shot examples via `data_paths.fewshot_file`
+- creates up to 8 fixed few-shot examples on first run, then uses the first `fewshot_k` per config
+- removes few-shot examples from training to reduce leakage
+- in non-smoke runs, `run_experiment` downsamples GSM8K test to 20% before evaluation (seeded by `cfg.seed` = 42 by default)
 
 Safeguard model default in configs:
 - `data_paths.safeguard_model: Qwen/Qwen3-4B-SafeRL`
@@ -85,18 +98,21 @@ Flags:
 Examples:
 ```bash
 # 1) Prepare AILuminate data
-python -m src.cli.prepare_ailuminate_data
+python -m src.data.prepare_ailuminate_data
 
 # 2) Smoke test
 python -m src.cli.run_experiment --config configs/simple.yaml --smoke-test
 
-# 3) Full simple run
+# 3) Sandbox one-sample validation run
+python -m src.cli.run_experiment --config configs/sandbox_one.yaml --smoke-test
+
+# 4) Full simple run
 python -m src.cli.run_experiment --config configs/simple.yaml
 
-# 4) Full medium run
+# 5) Full medium run
 python -m src.cli.run_experiment --config configs/medium.yaml
 
-# 5) Full strong run
+# 6) Full strong run
 python -m src.cli.run_experiment --config configs/strong.yaml
 ```
 
