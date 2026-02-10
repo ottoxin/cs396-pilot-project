@@ -45,6 +45,7 @@ pip install -r requirements.txt
 ```
 
 Notes:
+- `Qwen/Qwen3-4B-SafeRL` requires `transformers>=4.51.0` (already set in `requirements.txt`).
 - `bitsandbytes` is restricted in `requirements.txt` to Linux x86_64.
 - On non-CUDA or unsupported platforms, training/inference runs without bitsandbytes quantization acceleration.
 - Safeguard eval with `Qwen/Qwen3-4B-SafeRL` adds a separate 4B model load during safety scoring.
@@ -52,7 +53,7 @@ Notes:
 ## Data Setup
 Required for full run:
 - `data/ailuminate.jsonl` (generate with command below)
-- `data/safety_prompt.txt`
+- `configs/safety_prompt.txt`
 - internet access on first run to download safeguard model weights
 
 Prepare AILuminate JSONL from class CSV:

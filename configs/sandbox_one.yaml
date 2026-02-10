@@ -38,6 +38,6 @@ data_paths:
   fewshot_file: data/fewshot_sandbox_one.jsonl
   refined_gsm8k: data/gsm8k_train_self-instruct.jsonl
   ailuminate: data/ailuminate.jsonl
-  safety_prompt: data/safety_prompt.txt
+  safety_prompt: configs/safety_prompt.txt
   safeguard_model: Qwen/Qwen3-4B-SafeRL
 output_dir: results

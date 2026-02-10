@@ -1,5 +1,6 @@
 .DS_Store
 .Rhistory
+.hf_cache/
 data/ailuminate_test.csv
 data/ailuminate.jsonl
 data/fewshot_*.jsonl

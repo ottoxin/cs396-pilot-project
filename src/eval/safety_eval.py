@@ -4,6 +4,7 @@ from typing import Tuple
 
 import torch
 from tqdm import tqdm
+import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from src.utils.io import ensure_dir
@@ -17,22 +18,42 @@ def _model_device(model) -> torch.device:
 
 
 def _load_safety_components(model_path: str) -> Tuple[object, object]:
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_path,
-        use_fast=False,
-        trust_remote_code=True,
-    )
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            use_fast=False,
+            trust_remote_code=True,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "model type `qwen3`" in msg or "model type 'qwen3'" in msg:
+            raise RuntimeError(
+                "Qwen3 safeguard model requires a newer transformers version. "
+                f"Current version: {transformers.__version__}. "
+                "Please upgrade to transformers>=4.51.0."
+            ) from e
+        raise
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
 
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        device_map="auto",
-        torch_dtype=dtype,
-        trust_remote_code=True,
-    )
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+            torch_dtype=dtype,
+            trust_remote_code=True,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "model type `qwen3`" in msg or "model type 'qwen3'" in msg:
+            raise RuntimeError(
+                "Qwen3 safeguard model requires a newer transformers version. "
+                f"Current version: {transformers.__version__}. "
+                "Please upgrade to transformers>=4.51.0."
+            ) from e
+        raise
     model.eval()
     return model, tokenizer
 
