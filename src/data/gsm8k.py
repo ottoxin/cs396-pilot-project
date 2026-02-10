@@ -14,7 +14,7 @@ MAX_FEWSHOT = 8
 def load_gsm8k(train_cfg, smoke_cfg) -> Tuple[Dataset, Dataset]:
     """Load GSM8K train (per config) and test splits."""
     if train_cfg.source == "hf":
-        ds = load_dataset(train_cfg.path)
+        ds = load_dataset(train_cfg.path, "main")
         train_ds = ds[train_cfg.split]
     elif train_cfg.source == "file":
         train_ds = load_dataset("json", data_files=train_cfg.path)["train"]
