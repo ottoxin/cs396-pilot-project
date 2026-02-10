@@ -2,6 +2,7 @@ import json
 import os
 import random
 from typing import Dict, List, Tuple
+import urllib.request
 
 from datasets import load_dataset, Dataset
 
@@ -9,6 +10,8 @@ from src.utils.io import ensure_dir
 
 SYSTEM_PROMPT = "You are a helpful assistant. Solve the math problem step by step. Give the final answer in the format '#### <number>'."
 MAX_FEWSHOT = 8
+SELF_INSTRUCT_FILE = "gsm8k_train_self-instruct.jsonl"
+SELF_INSTRUCT_URL = "https://www.csie.ntu.edu.tw/~b10902031/gsm8k_train_self-instruct.jsonl"
 
 
 def _render_messages_plain(messages: List[Dict], add_generation_prompt: bool) -> str:
@@ -22,12 +25,30 @@ def _render_messages_plain(messages: List[Dict], add_generation_prompt: bool) ->
     return "\n".join(parts)
 
 
+def _maybe_download_refined_gsm8k(path: str) -> None:
+    if os.path.exists(path):
+        return
+    if os.path.basename(path) != SELF_INSTRUCT_FILE:
+        raise FileNotFoundError(
+            f"Training file not found: {path}. If this is your refined GSM8K set, place it there first."
+        )
+    ensure_dir(os.path.dirname(path) or ".")
+    print(f"Refined GSM8K file not found. Downloading from {SELF_INSTRUCT_URL} -> {path}")
+    try:
+        urllib.request.urlretrieve(SELF_INSTRUCT_URL, path)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to download {SELF_INSTRUCT_FILE} from {SELF_INSTRUCT_URL}: {e}"
+        ) from e
+
+
 def load_gsm8k(train_cfg, smoke_cfg) -> Tuple[Dataset, Dataset]:
     """Load GSM8K train (per config) and test splits."""
     if train_cfg.source == "hf":
         ds = load_dataset(train_cfg.path, "main")
         train_ds = ds[train_cfg.split]
     elif train_cfg.source == "file":
+        _maybe_download_refined_gsm8k(train_cfg.path)
         train_ds = load_dataset("json", data_files=train_cfg.path)["train"]
     else:
         raise ValueError(f"Unknown train data source: {train_cfg.source}")

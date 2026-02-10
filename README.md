@@ -73,11 +73,17 @@ python -m src.data.prepare_ailuminate_data
 
 `src/data/gsm8k.py` behavior:
 - loads GSM8K train from `train_data.source` (`hf` or `file`) and always loads GSM8K test from HF (`gsm8k`, `main`)
+- if `train_data.source: file` and path is `data/gsm8k_train_self-instruct.jsonl`, it auto-downloads the file when missing
 - in smoke mode, truncates train/test using `smoke_test.train_samples` and `smoke_test.gsm8k_eval_samples`
 - manages fixed few-shot examples via `data_paths.fewshot_file`
 - creates up to 8 fixed few-shot examples on first run, then uses the first `fewshot_k` per config
 - removes few-shot examples from training to reduce leakage
 - in non-smoke runs, `run_experiment` downsamples GSM8K test to 20% before evaluation (seeded by `cfg.seed` = 42 by default)
+
+Manual fallback download:
+```bash
+wget https://www.csie.ntu.edu.tw/~b10902031/gsm8k_train_self-instruct.jsonl -O data/gsm8k_train_self-instruct.jsonl
+```
 
 Safeguard model default in configs:
 - `data_paths.safeguard_model: Qwen/Qwen3-4B-SafeRL`
