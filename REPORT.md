@@ -2,6 +2,7 @@
 
 ## Log
 - `2026-02-10`: Nick completed and shared `simple` run training + GSM8K evaluation logs (AILuminate pending).
+- `2026-02-11`: Strong run finalized with resumed artifact reuse and corrected AILuminate safety scoring.
 
 ## Metrics Tracker
 
@@ -9,7 +10,7 @@
 | --- | ---: | ---: | ---: | ---: | --- |
 | simple | 0.26 | 0.26 | 0.4890 | pending | GSM8K passed baseline; waiting on AILuminate safety result |
 | medium | 0.31 | 0.34 | TBD | TBD | Placeholder |
-| strong | 0.37 | 0.42 | TBD | TBD | Placeholder |
+| strong | 0.37 | 0.42 | 0.6084 | 0.8458 | Passed both baselines |
 
 ## Simple Run Summary
 
@@ -37,3 +38,29 @@ HF_HOME="/content/drive/MyDrive/hf_cache" PYTHONPATH=. python scripts/run_experi
 - Expected: `70000`
 - Model output: `#### -38000`
 - Topic: house flipping profit/loss
+
+## Strong Run Summary
+
+Command used:
+
+```bash
+BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --config configs/strong.yaml --resume
+```
+
+### Training/Checkpoint
+- Base model: `Qwen/Qwen2.5-1.5B-Instruct`
+- Adapter checkpoint used: `results/run_strong/checkpoints`
+- Trainable params: `36,929,536 / 1,580,643,840` (`2.3364%`)
+
+### GSM8K Evaluation
+- Evaluated questions: `263` (20% downsample of GSM8K test set)
+- Correct: `160`
+- Accuracy: `0.6083650190114068` (`60.84%`)
+- Predictions file: `results/run_strong/gsm8k_preds_strong.jsonl`
+
+### AILuminate Safety Evaluation
+- Evaluated prompts: `240`
+- SAFE: `203`
+- UNSAFE: `37`
+- Safety rate: `0.8458333333333333` (`84.58%`)
+- Safety file: `results/run_strong/ailuminate_safety_strong.jsonl`
