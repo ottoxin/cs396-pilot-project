@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import traceback
 from glob import glob
 from typing import Optional
@@ -51,43 +52,177 @@ def _resolve_path(path: str, assume_local: bool = True) -> str:
     return os.path.join(os.getcwd(), path)
 
 
-def evaluate_checkpoint(cfg, adapter_dir, test_ds, fewshot_examples, ailuminate_ds: Optional[object], skip_ailuminate: bool):
-    print(f"\nEvaluating checkpoint: {adapter_dir}")
-    try:
-        model_inf = load_for_inference(cfg.base_model, adapter_dir, cfg.quantization)
-        tokenizer = load_tokenizer(cfg.base_model)
-    except Exception as e:
-        print(f"Failed to load checkpoint/model: {e}")
-        return 0.0, 0.0, adapter_dir
+def _artifact_paths(cfg, run_dir: str):
+    return {
+        "gsm8k_preds": os.path.join(run_dir, f"gsm8k_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_preds": os.path.join(run_dir, f"ailuminate_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_safety": os.path.join(run_dir, f"ailuminate_safety_{cfg.run_name}.jsonl"),
+    }
 
-    gsm8k_pred_path = os.path.join(cfg.output_dir, f"gsm8k_preds_{cfg.run_name}.jsonl")
-    try:
-        gsm8k_acc = evaluate_gsm8k(
-            model_inf,
-            tokenizer,
-            test_ds,
-            fewshot_examples,
-            cfg.max_new_tokens_gsm8k,
-            gsm8k_pred_path,
-        )
-    except Exception as e:
-        print(f"GSM8K eval failed: {e}")
-        traceback.print_exc()
-        gsm8k_acc = 0.0
+
+def _legacy_artifact_paths(cfg):
+    return {
+        "gsm8k_preds": os.path.join(cfg.output_dir, f"gsm8k_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_preds": os.path.join(cfg.output_dir, f"ailuminate_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_safety": os.path.join(cfg.output_dir, f"ailuminate_safety_{cfg.run_name}.jsonl"),
+    }
+
+
+def _promote_legacy_artifact(primary_path: str, legacy_path: str) -> None:
+    if _exists(primary_path) or not _exists(legacy_path):
+        return
+    ensure_dir(os.path.dirname(primary_path))
+    shutil.copy2(legacy_path, primary_path)
+    print(f"Promoted legacy artifact: {legacy_path} -> {primary_path}")
+
+
+def _read_jsonl(path: str):
+    rows = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return rows
+
+
+def _gsm8k_acc_from_preds(path: str) -> float:
+    rows = _read_jsonl(path)
+    if not rows:
+        return 0.0
+    if "correct" in rows[0]:
+        correct = sum(1 for row in rows if bool(row.get("correct", False)))
+        return correct / len(rows)
+
+    correct = 0
+    for row in rows:
+        pred = gsm8k_utils.parse_gsm8k_answer(row.get("model_output", ""))
+        gold = gsm8k_utils.parse_gsm8k_answer(row.get("gold_answer", ""))
+        correct += int(pred is not None and gold is not None and pred == gold)
+    return correct / len(rows)
+
+
+def _safety_rate_from_results(path: str) -> float:
+    rows = _read_jsonl(path)
+    if not rows:
+        return 0.0
+    safe = sum(1 for row in rows if str(row.get("safety_label", "")).strip().lower() == "safe")
+    return safe / len(rows)
+
+
+def _latest_step_checkpoint(checkpoints_dir: str) -> Optional[str]:
+    candidates = []
+    for ckpt in glob(os.path.join(checkpoints_dir, "checkpoint-*")):
+        step_str = os.path.basename(ckpt).replace("checkpoint-", "", 1)
+        try:
+            step = int(step_str)
+        except ValueError:
+            continue
+        candidates.append((step, ckpt))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0])
+    return candidates[-1][1]
+
+
+def _is_adapter_dir(path: str) -> bool:
+    return _exists(os.path.join(path, "adapter_model.safetensors")) and _exists(
+        os.path.join(path, "adapter_config.json")
+    )
+
+
+def evaluate_checkpoint(
+    cfg,
+    run_dir: str,
+    adapter_dir,
+    test_ds,
+    fewshot_examples,
+    ailuminate_ds: Optional[object],
+    skip_ailuminate: bool,
+    skip_gsm8k: bool = False,
+    force_rerun_all: bool = False,
+    eval_batch_size: int = 1,
+):
+    print(f"\nEvaluating checkpoint: {adapter_dir}")
+
+    paths = _artifact_paths(cfg, run_dir)
+    legacy_paths = _legacy_artifact_paths(cfg)
+    if not force_rerun_all:
+        for key in paths:
+            _promote_legacy_artifact(paths[key], legacy_paths[key])
+
+    gsm8k_pred_path = paths["gsm8k_preds"]
+    ailuminate_pred_path = paths["ailuminate_preds"]
+    safety_output_path = paths["ailuminate_safety"]
+
+    need_gsm8k_gen = not skip_gsm8k and (force_rerun_all or not _exists(gsm8k_pred_path))
+    need_ailuminate_gen = not skip_ailuminate and (force_rerun_all or not _exists(ailuminate_pred_path))
+    need_safety_eval = not skip_ailuminate and (force_rerun_all or not _exists(safety_output_path))
+    if need_safety_eval and not need_ailuminate_gen and not _exists(ailuminate_pred_path):
+        need_ailuminate_gen = True
+
+    need_model = need_gsm8k_gen or need_ailuminate_gen
+    model_inf = None
+    tokenizer = None
+    if need_model:
+        try:
+            model_inf = load_for_inference(cfg.base_model, adapter_dir, cfg.quantization)
+            tokenizer = load_tokenizer(cfg.base_model)
+        except Exception as e:
+            print(f"Failed to load checkpoint/model: {e}")
+            return 0.0, 0.0, adapter_dir
+
+    if skip_gsm8k:
+        if _exists(gsm8k_pred_path):
+            gsm8k_acc = _gsm8k_acc_from_preds(gsm8k_pred_path)
+            print(f"Skipping GSM8K eval and reusing {gsm8k_pred_path}")
+        else:
+            print("Skipping GSM8K eval with no existing predictions; setting acc=0.0")
+            gsm8k_acc = 0.0
+    elif not need_gsm8k_gen:
+        gsm8k_acc = _gsm8k_acc_from_preds(gsm8k_pred_path)
+        print(f"Reusing existing GSM8K predictions: {gsm8k_pred_path}")
+    else:
+        try:
+            gsm8k_acc = evaluate_gsm8k(
+                model_inf,
+                tokenizer,
+                test_ds,
+                fewshot_examples,
+                cfg.max_new_tokens_gsm8k,
+                gsm8k_pred_path,
+                batch_size=eval_batch_size,
+            )
+        except Exception as e:
+            print(f"GSM8K eval failed: {e}")
+            traceback.print_exc()
+            gsm8k_acc = 0.0
 
     safety_rate = 0.0
     if not skip_ailuminate:
         try:
-            ailuminate_pred_path = os.path.join(cfg.output_dir, f"ailuminate_preds_{cfg.run_name}.jsonl")
-            run_ailuminate(model_inf, tokenizer, ailuminate_ds, cfg.max_new_tokens_ailuminate, ailuminate_pred_path)
+            if need_ailuminate_gen:
+                run_ailuminate(
+                    model_inf,
+                    tokenizer,
+                    ailuminate_ds,
+                    cfg.max_new_tokens_ailuminate,
+                    ailuminate_pred_path,
+                    batch_size=eval_batch_size,
+                )
+            else:
+                print(f"Reusing existing AILuminate predictions: {ailuminate_pred_path}")
 
-            safety_output_path = os.path.join(cfg.output_dir, f"ailuminate_safety_{cfg.run_name}.jsonl")
-            safety_rate = run_safety_eval(
-                cfg.data_paths.safeguard_model,
-                cfg.data_paths.safety_prompt,
-                ailuminate_pred_path,
-                safety_output_path,
-            )
+            if need_safety_eval:
+                safety_rate = run_safety_eval(
+                    cfg.data_paths.safeguard_model,
+                    cfg.data_paths.safety_prompt,
+                    ailuminate_pred_path,
+                    safety_output_path,
+                )
+            else:
+                safety_rate = _safety_rate_from_results(safety_output_path)
+                print(f"Reusing existing safety results: {safety_output_path}")
         except Exception as e:
             print(f"AILuminate/safety eval failed: {e}")
             traceback.print_exc()
@@ -105,16 +240,44 @@ def main():
         default=None,
         help="Use an existing adapter/checkpoint path and skip training.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume from latest run artifacts: continue training from latest checkpoint when possible, "
+            "reuse existing eval outputs when available."
+        ),
+    )
+    parser.add_argument(
+        "--rerun-all",
+        action="store_true",
+        help="Ignore existing checkpoints/predictions and rerun training+evaluation from scratch.",
+    )
     parser.add_argument("--smoke-test", action="store_true", help="Enable smoke test override")
+    parser.add_argument(
+        "--skip-gsm8k",
+        action="store_true",
+        help="Skip GSM8K generation. If existing predictions are present, accuracy is computed from them.",
+    )
     parser.add_argument(
         "--skip-ailuminate",
         action="store_true",
         help="Skip AILuminate generation and safety evaluation (sets safety metric to 0.0).",
     )
+    parser.add_argument(
+        "--eval-batch-size",
+        type=int,
+        default=None,
+        help="Override evaluation batch size used for GSM8K and AILuminate generation.",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config, smoke_override=args.smoke_test)
     set_seed(cfg.seed)
+
+    eval_batch_size = args.eval_batch_size if args.eval_batch_size is not None else cfg.eval_batch_size
+    eval_batch_size = max(1, int(eval_batch_size))
+    force_rerun_all = bool(args.rerun_all)
 
     run_dir = os.path.join(cfg.output_dir, f"run_{cfg.run_name}")
     ensure_dir(run_dir)
@@ -131,9 +294,31 @@ def main():
             print(f"Warning: checkpoint path does not exist yet: {adapter_dir}")
         print(f"Skipping training and using checkpoint: {adapter_dir}")
     else:
-        tokenized_train = gsm8k_utils.build_train_dataset(train_ds, tokenizer, cfg.max_seq_length)
-        model = load_base_model(cfg, for_training=True)
-        adapter_dir = train_model(cfg, model, tokenizer, tokenized_train, run_dir)
+        adapter_dir = None
+        resume_from_checkpoint = None
+        checkpoint_dir = os.path.join(run_dir, "checkpoints")
+        auto_resume = args.resume or not force_rerun_all
+        if auto_resume:
+            if _is_adapter_dir(checkpoint_dir):
+                adapter_dir = checkpoint_dir
+                print(f"Using existing trained adapter at {adapter_dir}; skipping training.")
+            else:
+                latest_ckpt = _latest_step_checkpoint(checkpoint_dir)
+                if latest_ckpt:
+                    resume_from_checkpoint = latest_ckpt
+                    print(f"Continuing training from checkpoint {latest_ckpt}")
+
+        if adapter_dir is None:
+            tokenized_train = gsm8k_utils.build_train_dataset(train_ds, tokenizer, cfg.max_seq_length)
+            model = load_base_model(cfg, for_training=True)
+            adapter_dir = train_model(
+                cfg,
+                model,
+                tokenizer,
+                tokenized_train,
+                run_dir,
+                resume_from_checkpoint=resume_from_checkpoint,
+            )
 
     cfg.save_resolved(os.path.join(run_dir, "config_resolved.json"))
 
@@ -177,11 +362,31 @@ def main():
         if ckpts:
             checkpoints = ckpts[-cfg.checkpointing.sweep_max_checkpoints :]
 
+    if len(checkpoints) > 1:
+        if args.skip_gsm8k:
+            print("checkpoint_sweep enabled: overriding --skip-gsm8k to evaluate all checkpoints fairly.")
+        skip_gsm8k = False
+        if not force_rerun_all:
+            print("checkpoint_sweep enabled: forcing rerun for fair checkpoint comparisons.")
+        sweep_force_rerun = True
+    else:
+        skip_gsm8k = args.skip_gsm8k
+        sweep_force_rerun = force_rerun_all
+
     ckpt_scores = []
     best = None
     for ckpt in checkpoints:
         gsm8k_acc, safety_rate, _ = evaluate_checkpoint(
-            cfg, ckpt, test_ds, fewshot_examples, ailuminate_ds, skip_ailuminate
+            cfg,
+            run_dir,
+            ckpt,
+            test_ds,
+            fewshot_examples,
+            ailuminate_ds,
+            skip_ailuminate,
+            skip_gsm8k=skip_gsm8k,
+            force_rerun_all=sweep_force_rerun,
+            eval_batch_size=eval_batch_size,
         )
         ckpt_scores.append(
             {"checkpoint": ckpt, "gsm8k_acc": gsm8k_acc, "ailuminate_safety": safety_rate}

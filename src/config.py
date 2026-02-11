@@ -70,6 +70,7 @@ class ExperimentConfig:
     fewshot_k: int = 3
     max_new_tokens_gsm8k: int = 512
     max_new_tokens_ailuminate: int = 512
+    eval_batch_size: int = 1
     quantization: QuantConfig = field(default_factory=QuantConfig)
     checkpointing: CheckpointingConfig = field(default_factory=CheckpointingConfig)
     smoke_test: SmokeTestConfig = field(default_factory=SmokeTestConfig)
@@ -115,6 +116,7 @@ def load_config(path: str, smoke_override: Optional[bool] = None) -> ExperimentC
         fewshot_k=raw.get("fewshot_k", 3),
         max_new_tokens_gsm8k=raw.get("max_new_tokens_gsm8k", 512),
         max_new_tokens_ailuminate=raw.get("max_new_tokens_ailuminate", 512),
+        eval_batch_size=raw.get("eval_batch_size", 1),
         quantization=quantization,
         checkpointing=checkpointing,
         smoke_test=smoke_test,

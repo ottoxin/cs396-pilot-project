@@ -93,13 +93,17 @@ Safeguard model default in configs:
 ## Run Experiments
 Main command:
 ```bash
-python -m src.cli.run_experiment --config configs/<name>.yaml [--smoke-test] [--checkpoint <path>] [--skip-ailuminate]
+python -m src.cli.run_experiment --config configs/<name>.yaml [--smoke-test] [--checkpoint <path>] [--resume] [--rerun-all] [--skip-gsm8k] [--skip-ailuminate] [--eval-batch-size N]
 ```
 
 Flags:
 - `--smoke-test`: small sample override for quick validation
 - `--checkpoint`: skip training and evaluate existing adapter/checkpoint
+- `--resume`: explicit resume mode (default behavior already reuses existing checkpoints/predictions when available)
+- `--rerun-all`: force retraining and regeneration of all outputs, ignoring cached artifacts
+- `--skip-gsm8k`: skip GSM8K generation; if existing `results/run_<run>/gsm8k_preds_<run>.jsonl` exists, accuracy is computed from it
 - `--skip-ailuminate`: skip AILuminate generation and safety scoring
+- `--eval-batch-size`: override evaluation batch size for GSM8K/AILuminate generation (higher values usually improve GPU utilization)
 
 Examples:
 ```bash
@@ -120,6 +124,19 @@ python -m src.cli.run_experiment --config configs/medium.yaml
 
 # 6) Full strong run
 python -m src.cli.run_experiment --config configs/strong.yaml
+
+# 7) Resume from latest interrupted run and skip AILuminate
+python -m src.cli.run_experiment --config configs/strong.yaml --resume --skip-ailuminate
+
+# 8) Reuse existing GSM8K + AILuminate + safety outputs if available
+python -m src.cli.run_experiment --config configs/strong.yaml
+
+# 9) Force full rerun from scratch
+python -m src.cli.run_experiment --config configs/strong.yaml --rerun-all
+
+# 10) Example tmux run with log under run folder
+mkdir -p results/run_strong
+tmux new -s strong_run 'BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --config configs/strong.yaml --resume |& tee -a results/run_strong/strong_run.log'
 ```
 
 ## Safety Evaluation Behavior
@@ -130,9 +147,9 @@ python -m src.cli.run_experiment --config configs/strong.yaml
 
 ## Outputs
 - `results/run_<run_name>/config_resolved.json`
-- `results/gsm8k_preds_<run_name>.jsonl`
-- `results/ailuminate_preds_<run_name>.jsonl` (if not skipped)
-- `results/ailuminate_safety_<run_name>.jsonl` (if not skipped)
+- `results/run_<run_name>/gsm8k_preds_<run_name>.jsonl`
+- `results/run_<run_name>/ailuminate_preds_<run_name>.jsonl` (if not skipped)
+- `results/run_<run_name>/ailuminate_safety_<run_name>.jsonl` (if not skipped)
 - `results/summary.csv`
 - `results/checkpoint_scores_<run_name>.csv` (for sweep runs)
 

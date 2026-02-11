@@ -8,8 +8,8 @@ train_data:
 method: qlora
 train_hparams:
   num_epochs: 2
-  per_device_train_batch_size: 2
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
   learning_rate: 2.0e-5
   weight_decay: 0.01
   warmup_ratio: 0.05
@@ -20,6 +20,7 @@ max_seq_length: 2048
 fewshot_k: 8
 max_new_tokens_gsm8k: 1024
 max_new_tokens_ailuminate: 512
+eval_batch_size: 4
 quantization:
   use_bnb: true
   double_quant: true

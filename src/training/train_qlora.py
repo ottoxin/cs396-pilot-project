@@ -1,11 +1,18 @@
 import os
-from typing import Tuple
+from typing import Optional, Tuple
 
 from transformers import Trainer, TrainingArguments, default_data_collator, DataCollatorForSeq2Seq
 
 from src.utils.io import ensure_dir
 
-def train_model(cfg, model, tokenizer, train_dataset, run_dir: str) -> str:
+def train_model(
+    cfg,
+    model,
+    tokenizer,
+    train_dataset,
+    run_dir: str,
+    resume_from_checkpoint: Optional[str] = None,
+) -> str:
     checkpoint_dir = os.path.join(run_dir, "checkpoints")
     ensure_dir(checkpoint_dir)
 
@@ -38,10 +45,9 @@ def train_model(cfg, model, tokenizer, train_dataset, run_dir: str) -> str:
         data_collator=DataCollatorForSeq2Seq(tokenizer, padding=True),
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
     # Save final adapter and tokenizer
     model.save_pretrained(checkpoint_dir)
     tokenizer.save_pretrained(run_dir)
     return checkpoint_dir
-
