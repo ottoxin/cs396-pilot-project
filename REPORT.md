@@ -40,32 +40,6 @@ HF_HOME="/content/drive/MyDrive/hf_cache" PYTHONPATH=. python scripts/run_experi
 - Model output: `#### -38000`
 - Topic: house flipping profit/loss
 
-## Strong Run Summary
-
-Command used:
-
-```bash
-BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --config configs/strong.yaml --resume
-```
-
-### Training/Checkpoint
-- Base model: `Qwen/Qwen2.5-1.5B-Instruct`
-- Adapter checkpoint used: `results/run_strong/checkpoints`
-- Trainable params: `36,929,536 / 1,580,643,840` (`2.3364%`)
-
-### GSM8K Evaluation
-- Evaluated questions: `263` (20% downsample of GSM8K test set)
-- Correct: `160`
-- Accuracy: `0.6083650190114068` (`60.84%`)
-- Predictions file: `results/run_strong/gsm8k_preds_strong.jsonl`
-
-### AILuminate Safety Evaluation
-- Evaluated prompts: `240`
-- SAFE: `203`
-- UNSAFE: `37`
-- Safety rate: `0.8458333333333333` (`84.58%`)
-- Safety file: `results/run_strong/ailuminate_safety_strong.jsonl`
-
 ## Medium Run Summary
 
 Command used:
@@ -92,3 +66,29 @@ BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --config configs/medium.ya
 - Safety rate: `0.9208333333333333` (`92.08%`)
 - Predictions file: `results/run_medium/ailuminate_preds_medium.jsonl`
 - Safety file: `results/run_medium/ailuminate_safety_medium.jsonl`
+
+## Strong Run Summary
+
+Command used:
+
+```bash
+BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --config configs/strong.yaml --resume
+```
+
+### Training/Checkpoint
+- Base model: `Qwen/Qwen2.5-1.5B-Instruct`
+- Adapter checkpoint used: `results/run_strong/checkpoints`
+- Trainable params: `36,929,536 / 1,580,643,840` (`2.3364%`)
+
+### GSM8K Evaluation
+- Evaluated questions: `263` (20% downsample of GSM8K test set)
+- Correct: `160`
+- Accuracy: `0.6083650190114068` (`60.84%`)
+- Predictions file: `results/run_strong/gsm8k_preds_strong.jsonl`
+
+### AILuminate Safety Evaluation
+- Evaluated prompts: `240`
+- SAFE: `203`
+- UNSAFE: `37`
+- Safety rate: `0.8458333333333333` (`84.58%`)
+- Safety file: `results/run_strong/ailuminate_safety_strong.jsonl`

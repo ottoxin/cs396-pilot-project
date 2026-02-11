@@ -20,6 +20,7 @@ max_seq_length: 2048
 fewshot_k: 5
 max_new_tokens_gsm8k: 768
 max_new_tokens_ailuminate: 512
+eval_batch_size: 4
 quantization:
   use_bnb: true
   double_quant: true
