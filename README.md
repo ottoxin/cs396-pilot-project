@@ -54,6 +54,39 @@ Notes:
 - On non-CUDA or unsupported platforms, training/inference runs without bitsandbytes quantization acceleration.
 - Safeguard eval with `Qwen/Qwen3-4B-SafeRL` adds a separate 4B model load during safety scoring.
 
+## Code Submission / Reproducibility
+Submission command (single entrypoint):
+```bash
+bash run_submission.sh
+```
+
+Use this on a clean clone for grading. It is the canonical end-to-end reproduction path.
+
+What this command does:
+- creates/uses `.venv`, installs `requirements.txt`
+- downloads and prepares AILuminate data via `python -m src.data.prepare_ailuminate_data`
+- runs inference+evaluation for `simple`, `medium`, `strong` using HF adapters
+- writes final reproducibility metrics to:
+  - `submission_results/final_metrics.json`
+  - `submission_results/final_metrics.csv`
+
+Adapter IDs used by `run_submission.sh`:
+- `simple`: `nbso/simple_pilot_project_model`
+- `medium`: `haohxin/medium_pilot_project_model`
+- `strong`: `haohxin/strong_pilot_project_model`
+
+Expected metric denominators:
+- GSM8K totals: `simple=1319`, `medium=263`, `strong=263`
+- AILuminate totals: `240` prompts for each run
+
+Reference artifacts note:
+- `results/*.jsonl` files in this repo are historical reference outputs from earlier experiments.
+- Submission regeneration always writes fresh outputs under `submission_results/` and does not rely on those historical files.
+
+Runtime/hardware expectation:
+- Full reproduction is GPU-oriented and can take multiple hours depending on GPU memory/performance.
+- Internet is required on first run for model/data downloads.
+
 ## Data Setup
 Required for full run:
 - `data/ailuminate.jsonl` (generate with command below)
@@ -93,7 +126,7 @@ Safeguard model default in configs:
 ## Run Experiments
 Main command:
 ```bash
-python -m src.cli.run_experiment --config configs/<name>.yaml [--smoke-test] [--checkpoint <path>] [--resume] [--rerun-all] [--skip-gsm8k] [--skip-ailuminate] [--eval-batch-size N]
+python -m src.cli.run_experiment --config configs/<name>.yaml [--smoke-test] [--checkpoint <path>] [--resume] [--rerun-all] [--skip-gsm8k] [--skip-ailuminate] [--eval-batch-size N] [--output-dir <path>] [--full-gsm8k-test]
 ```
 
 Flags:
@@ -101,9 +134,11 @@ Flags:
 - `--checkpoint`: skip training and evaluate existing adapter/checkpoint
 - `--resume`: explicit resume mode (default behavior already reuses existing checkpoints/predictions when available)
 - `--rerun-all`: force retraining and regeneration of all outputs, ignoring cached artifacts
-- `--skip-gsm8k`: skip GSM8K generation; if existing `results/run_<run>/gsm8k_preds_<run>.jsonl` exists, accuracy is computed from it
+- `--skip-gsm8k`: skip GSM8K generation; if existing predictions are present for the selected output directory, accuracy is computed from them
 - `--skip-ailuminate`: skip AILuminate generation and safety scoring
 - `--eval-batch-size`: override evaluation batch size for GSM8K/AILuminate generation (higher values usually improve GPU utilization)
+- `--output-dir`: override config `output_dir` for all artifacts from this invocation
+- `--full-gsm8k-test`: evaluate on full GSM8K test split instead of default 20% downsample
 
 Examples:
 ```bash
@@ -146,12 +181,19 @@ tmux new -s strong_run 'BNB_CUDA_VERSION=121 python -m src.cli.run_experiment --
 - You can still point `data_paths.safeguard_model` to a local model directory if needed.
 
 ## Outputs
+Default output root is `results/`. You can redirect outputs with `--output-dir` (for example, `submission_results/`).
+
 - `results/run_<run_name>/config_resolved.json`
 - `results/run_<run_name>/gsm8k_preds_<run_name>.jsonl`
 - `results/run_<run_name>/ailuminate_preds_<run_name>.jsonl` (if not skipped)
 - `results/run_<run_name>/ailuminate_safety_<run_name>.jsonl` (if not skipped)
 - `results/summary.csv`
 - `results/checkpoint_scores_<run_name>.csv` (for sweep runs)
+
+Submission flow outputs:
+- `submission_results/run_<run_name>/...` (per-run artifacts)
+- `submission_results/final_metrics.json`
+- `submission_results/final_metrics.csv`
 
 Baselines:
 - `simple`: accuracy >= 0.26 and safety >= 0.26

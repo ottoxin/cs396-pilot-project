@@ -60,11 +60,12 @@ def _artifact_paths(cfg, run_dir: str):
     }
 
 
-def _legacy_artifact_paths(cfg):
+def _legacy_artifact_paths(cfg, output_dir: Optional[str] = None):
+    base_output_dir = output_dir or cfg.output_dir
     return {
-        "gsm8k_preds": os.path.join(cfg.output_dir, f"gsm8k_preds_{cfg.run_name}.jsonl"),
-        "ailuminate_preds": os.path.join(cfg.output_dir, f"ailuminate_preds_{cfg.run_name}.jsonl"),
-        "ailuminate_safety": os.path.join(cfg.output_dir, f"ailuminate_safety_{cfg.run_name}.jsonl"),
+        "gsm8k_preds": os.path.join(base_output_dir, f"gsm8k_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_preds": os.path.join(base_output_dir, f"ailuminate_preds_{cfg.run_name}.jsonl"),
+        "ailuminate_safety": os.path.join(base_output_dir, f"ailuminate_safety_{cfg.run_name}.jsonl"),
     }
 
 
@@ -134,6 +135,7 @@ def _is_adapter_dir(path: str) -> bool:
 def evaluate_checkpoint(
     cfg,
     run_dir: str,
+    output_dir: str,
     adapter_dir,
     test_ds,
     fewshot_examples,
@@ -146,7 +148,7 @@ def evaluate_checkpoint(
     print(f"\nEvaluating checkpoint: {adapter_dir}")
 
     paths = _artifact_paths(cfg, run_dir)
-    legacy_paths = _legacy_artifact_paths(cfg)
+    legacy_paths = _legacy_artifact_paths(cfg, output_dir=output_dir)
     if not force_rerun_all:
         for key in paths:
             _promote_legacy_artifact(paths[key], legacy_paths[key])
@@ -270,6 +272,17 @@ def main():
         default=None,
         help="Override evaluation batch size used for GSM8K and AILuminate generation.",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Override config output_dir for this run.",
+    )
+    parser.add_argument(
+        "--full-gsm8k-test",
+        action="store_true",
+        help="Evaluate on the full GSM8K test split instead of the default 20%% downsample.",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config, smoke_override=args.smoke_test)
@@ -278,8 +291,9 @@ def main():
     eval_batch_size = args.eval_batch_size if args.eval_batch_size is not None else cfg.eval_batch_size
     eval_batch_size = max(1, int(eval_batch_size))
     force_rerun_all = bool(args.rerun_all)
+    output_dir = args.output_dir if args.output_dir else cfg.output_dir
 
-    run_dir = os.path.join(cfg.output_dir, f"run_{cfg.run_name}")
+    run_dir = os.path.join(output_dir, f"run_{cfg.run_name}")
     ensure_dir(run_dir)
 
     tokenizer = load_tokenizer(cfg.base_model)
@@ -324,6 +338,8 @@ def main():
 
     if cfg.smoke_test.enabled:
         test_ds = maybe_subset(test_ds, cfg.smoke_test.gsm8k_eval_samples)
+    elif args.full_gsm8k_test:
+        print(f"Using full GSM8K test set: {len(test_ds)} examples")
     else:
         subset_ratio = 0.2
         target_len = int(len(test_ds) * subset_ratio)
@@ -379,6 +395,7 @@ def main():
         gsm8k_acc, safety_rate, _ = evaluate_checkpoint(
             cfg,
             run_dir,
+            output_dir,
             ckpt,
             test_ds,
             fewshot_examples,
@@ -401,7 +418,7 @@ def main():
     gsm8k_acc, safety_rate, best_ckpt = best
 
     if cfg.checkpointing.checkpoint_sweep and not args.checkpoint:
-        sweep_path = os.path.join(cfg.output_dir, f"checkpoint_scores_{cfg.run_name}.csv")
+        sweep_path = os.path.join(output_dir, f"checkpoint_scores_{cfg.run_name}.csv")
         pd.DataFrame(ckpt_scores).to_csv(sweep_path, index=False)
 
     summary_row = {
@@ -414,7 +431,7 @@ def main():
         "ailuminate_safety": safety_rate,
         "checkpoint_path": best_ckpt,
     }
-    summary_path = os.path.join(cfg.output_dir, "summary.csv")
+    summary_path = os.path.join(output_dir, "summary.csv")
     if os.path.exists(summary_path):
         df = pd.read_csv(summary_path)
         df = pd.concat([df, pd.DataFrame([summary_row])], ignore_index=True)

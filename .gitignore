@@ -3,9 +3,13 @@
 .hf_cache/
 data/ailuminate_test.csv
 data/ailuminate.jsonl
+data/gsm8k_train_self-instruct.jsonl
 data/fewshot_*.jsonl
 data/safeguard_model/
 results/
+submission_results/
 .venv/
 __pycache__/
 *.pyc
+write-up/
+hf-model-cards/
