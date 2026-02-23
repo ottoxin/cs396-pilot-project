@@ -15,7 +15,7 @@ python -m src.data.prepare_ailuminate_data
 
 python -m src.cli.run_experiment \
   --config configs/simple.yaml \
-  --checkpoint nbso/simple_pilot_project_model \
+  --checkpoint haohxin/simple_pilot_project_model \
   --full-gsm8k-test \
   --rerun-all \
   --output-dir submission_results

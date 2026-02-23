@@ -119,7 +119,7 @@ This command:
   - `submission_results/final_metrics.csv`
 
 Adapter sources used by submission script:
-- `simple`: `nbso/simple_pilot_project_model`
+- `simple`: `haohxin/simple_pilot_project_model`
 - `medium`: `haohxin/medium_pilot_project_model`
 - `strong`: `haohxin/strong_pilot_project_model`
 

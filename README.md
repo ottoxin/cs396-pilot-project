@@ -78,7 +78,7 @@ What this command does:
   - `submission_results/final_metrics.csv`
 
 Adapter IDs used by `run_submission.sh`:
-- `simple`: `nbso/simple_pilot_project_model`
+- `simple`: `haohxin/simple_pilot_project_model`
 - `medium`: `haohxin/medium_pilot_project_model`
 - `strong`: `haohxin/strong_pilot_project_model`
 
