@@ -9,6 +9,11 @@ End-to-end fine-tuning and evaluation for GSM8K plus AILuminate safety scoring.
 - Compare runs (`simple`, `medium`, `strong`) against baseline thresholds.
 
 ## Repo Layout
+- Top-level files:
+  - `run_submission.sh` - single-command submission pipeline (install deps, download assets, run all three evaluations, aggregate metrics)
+  - `requirements.txt` - pinned Python dependencies
+  - `pytest.ini` - pytest discovery/config defaults
+  - `REPORT.md` - concise run log and metrics tracker used by the team
 - `configs/`
   - `simple.yaml`, `medium.yaml`, `strong.yaml`, `sandbox_one.yaml`
 - `src/`
@@ -21,6 +26,8 @@ End-to-end fine-tuning and evaluation for GSM8K plus AILuminate safety scoring.
   - `eval/safety_eval.py` - safeguard safety judging (`Qwen/Qwen3-4B-SafeRL` by default)
 - `tests/`
   - unit tests for parsing, few-shot behavior, label masking, AILuminate prompt extraction
+- `scripts/`
+  - `aggregate_submission_metrics.py` - validates denominator counts and writes `submission_results/final_metrics.{json,csv}`
 - `data/`
   - runtime data artifacts (not fully tracked in git)
 
